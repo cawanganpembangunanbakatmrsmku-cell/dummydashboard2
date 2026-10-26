@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Papan Pemuka Analitis Korporat</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- PapaParse for CSV parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.min.js"></script>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        pbi: {
+                            bg: '#F3F4F6',
+                            card: '#FFFFFF',
+                            sidebar: '#1E293B',
+                            accent: '#F2C811',
+                            blue: '#117E8E',
+                            darkblue: '#0B4A54',
+                            navy: '#0F172A',
+                            text: '#334155'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #F3F4F6;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #F1F5F9;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #CBD5E1;
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94A3B8;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden text-slate-800">
+
+    <!-- Passcode Authentication Modal Screen -->
+    <div id="authOverlay" class="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 max-w-md w-full p-6 text-center space-y-5">
+            <div class="w-14 h-14 bg-teal-50 text-teal-600 rounded-2xl flex items-center justify-center mx-auto shadow-sm">
+                <i class="fa-solid fa-shield-halved text-2xl"></i>
+            </div>
+            <div>
+                <h2 class="text-xl font-bold text-slate-800">Akses Dilindungi</h2>
+                <p class="text-xs text-slate-500 mt-1">Sila masukkan kata laluan untuk mengakses Papan Pemuka Analitis Pelajar.</p>
+            </div>
+            <form onsubmit="handleAuthSubmit(event)" class="space-y-4">
+                <div>
+                    <input type="password" id="passcodeInput" placeholder="Masukkan Kata Laluan" autofocus
+                        class="w-full text-center tracking-widest text-lg font-bold py-2.5 px-4 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500">
+                    <p id="authErrorMsg" class="text-rose-600 text-xs mt-2 hidden font-medium">
+                        <i class="fa-solid fa-circle-exclamation mr-1"></i> Kata laluan salah. Sila cuba lagi.
+                    </p>
+                </div>
+                <button type="submit" class="w-full py-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl font-semibold text-sm transition shadow-md flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-lock-open"></i> Buka Papan Pemuka
+                </button>
+            </form>
+            <div class="pt-2 border-t border-slate-100">
+                <p class="text-[11px] text-slate-400">Papan Pemuka Data Korporat Sulit</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Header Bar (Power BI Style) -->
+    <header class="bg-slate-900 text-white h-14 flex items-center justify-between px-4 border-b border-slate-700 shadow-md shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="bg-amber-400 p-1.5 rounded text-slate-900 font-bold flex items-center justify-center w-8 h-8">
+                <i class="fa-solid fa-chart-column"></i>
+            </div>
+            <div>
+                <h1 class="font-semibold text-base leading-tight">Papan Pemuka Analitis Permohonan Pelajar</h1>
+                <p class="text-xs text-slate-400">Laporan Eksekutif & Visualisasi Data</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-3">
+            <button id="refreshBtn" onclick="loadCSVData()" class="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-600 transition">
+                <i class="fa-solid fa-rotate-right" id="refreshIcon"></i>
+                <span>Muat Semula Data</span>
+            </button>
+            <button onclick="exportData()" class="flex items-center space-x-2 bg-teal-700 hover:bg-teal-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition shadow-sm">
+                <i class="fa-solid fa-file-csv"></i>
+                <span>Eksport CSV</span>
+            </button>
+            <button onclick="logout()" class="flex items-center space-x-1.5 bg-rose-900/60 hover:bg-rose-800 text-rose-200 border border-rose-700 px-3 py-1.5 rounded-lg text-xs font-medium transition" title="Kunci Dashboard">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                <span>Log Keluar</span>
+            </button>
+            <div class="h-6 w-px bg-slate-700 mx-1"></div>
+            <span class="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full flex items-center gap-1.5 font-medium">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                Langsung
+            </span>
+        </div>
+    </header>
+
+    <!-- Main Content Layout -->
+    <div class="flex flex-1 overflow-hidden">
+
+        <!-- Sidebar / Filter Panel -->
+        <aside class="w-72 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 shadow-sm z-10">
+            <div class="p-4 overflow-y-auto custom-scrollbar flex-1 space-y-5">
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                    <h2 class="font-bold text-slate-700 text-sm flex items-center gap-2">
+                        <i class="fa-solid fa-filter text-teal-600"></i> Penapis Data (Slicers)
+                    </h2>
+                    <button onclick="resetFilters()" class="text-xs text-teal-600 hover:text-teal-800 font-medium hover:underline">Reset All</button>
+                </div>
+
+                <!-- Search Input -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1.5">Carian (Nama / No. Matrik)</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-search absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                        <input type="text" id="searchInput" placeholder="Cari pelajar..." oninput="applyFilters()"
+                            class="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500">
+                    </div>
+                </div>
+
+                <!-- Filter: Kategori Permohonan -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1.5">Kategori Permohonan</label>
+                    <select id="filterKategori" onchange="applyFilters()" class="w-full py-1.5 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500">
+                        <option value="ALL">Semua Kategori</option>
+                    </select>
+                </div>
+
+                <!-- Filter: Kelas -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1.5">Kelas</label>
+                    <select id="filterKelas" onchange="applyFilters()" class="w-full py-1.5 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500">
+                        <option value="ALL">Semua Kelas</option>
+                    </select>
+                </div>
+
+                <!-- Filter: Disiplin -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1.5">Rekod Disiplin Telefon</label>
+                    <select id="filterDisiplin" onchange="applyFilters()" class="w-full py-1.5 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500">
+                        <option value="ALL">Semua Status</option>
+                        <option value="Ya">Pernah Dikenakan Tindakan (Ya)</option>
+                        <option value="Tidak">Tiada Tindakan (Tidak)</option>
+                    </select>
+                </div>
+
+                <!-- Filter: Guru Penasihat -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1.5">Guru Penasihat</label>
+                    <select id="filterGuru" onchange="applyFilters()" class="w-full py-1.5 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500">
+                        <option value="ALL">Semua Guru</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="p-3 bg-slate-50 border-t border-slate-200 text-center">
+                <span class="text-[11px] text-slate-400 font-medium">Power BI Corporate Dashboard Layout</span>
+            </div>
+        </aside>
+
+        <!-- Main Body Area -->
+        <main class="flex-1 p-5 overflow-y-auto custom-scrollbar space-y-5">
+
+            <!-- Loading Spinner / Alert -->
+            <div id="loadingStatus" class="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg flex items-center justify-between text-xs">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-spinner fa-spin text-blue-600"></i>
+                    <span>Sedang memuatkan data dari Google Sheets CSV...</span>
+                </div>
+            </div>
+
+            <!-- Summary KPI Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                
+                <!-- KPI 1 -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Jumlah Permohonan</p>
+                            <h3 id="kpiTotal" class="text-2xl font-bold text-slate-800 mt-1">0</h3>
+                        </div>
+                        <div class="bg-teal-50 p-2.5 rounded-lg text-teal-600">
+                            <i class="fa-solid fa-file-invoice text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-2 border-t border-slate-100 flex items-center text-[11px] text-slate-500">
+                        <span class="text-emerald-600 font-semibold mr-1 flex items-center">
+                            <i class="fa-solid fa-database mr-1"></i> 100%
+                        </span>
+                        <span>rekod diproses</span>
+                    </div>
+                </div>
+
+                <!-- KPI 2 -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Jumlah Kelas Terlibat</p>
+                            <h3 id="kpiKelas" class="text-2xl font-bold text-slate-800 mt-1">0</h3>
+                        </div>
+                        <div class="bg-blue-50 p-2.5 rounded-lg text-blue-600">
+                            <i class="fa-solid fa-users-rectangle text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+                        Kategori kelas aktif
+                    </div>
+                </div>
+
+                <!-- KPI 3 -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Isu Disiplin Telefon</p>
+                            <h3 id="kpiDisiplin" class="text-2xl font-bold text-amber-600 mt-1">0</h3>
+                        </div>
+                        <div class="bg-amber-50 p-2.5 rounded-lg text-amber-600">
+                            <i class="fa-solid fa-triangle-exclamation text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+                        <span id="kpiDisiplinPercent" class="font-semibold text-amber-600">0%</span> daripada permohonan
+                    </div>
+                </div>
+
+                <!-- KPI 4 -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Guru Penasihat</p>
+                            <h3 id="kpiGuru" class="text-2xl font-bold text-slate-800 mt-1">0</h3>
+                        </div>
+                        <div class="bg-purple-50 p-2.5 rounded-lg text-purple-600">
+                            <i class="fa-solid fa-chalkboard-user text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+                        Pegawai penyelia
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Charts Section Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+                <!-- Chart 1: Kategori Permohonan -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-sm font-bold text-slate-700 flex items-center gap-2">
+                            <i class="fa-solid fa-chart-pie text-teal-600"></i> Agihan Kategori Permohonan
+                        </h3>
+                    </div>
+                    <div class="relative flex-1 min-h-[230px] flex items-center justify-center">
+                        <canvas id="chartKategori"></canvas>
+                    </div>
+                </div>
+
+                <!-- Chart 2: Disiplin Breakup -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-sm font-bold text-slate-700 flex items-center gap-2">
+                            <i class="fa-solid fa-mobile-screen-button text-teal-600"></i> Status Rekod Disiplin
+                        </h3>
+                    </div>
+                    <div class="relative flex-1 min-h-[230px] flex items-center justify-center">
+                        <canvas id="chartDisiplin"></canvas>
+                    </div>
+                </div>
+
+                <!-- Chart 3: Tempoh Permohonan -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-sm font-bold text-slate-700 flex items-center gap-2">
+                            <i class="fa-solid fa-clock text-teal-600"></i> Taburan Tempoh Permohonan
+                        </h3>
+                    </div>
+                    <div class="relative flex-1 min-h-[230px] flex items-center justify-center">
+                        <canvas id="chartTempoh"></canvas>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Chart Row 2 -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                
+                <!-- Chart 4: Permohonan Mengikut Kelas -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-sm font-bold text-slate-700 flex items-center gap-2">
+                            <i class="fa-solid fa-chart-simple text-teal-600"></i> Permohonan Mengikut Kelas
+                        </h3>
+                    </div>
+                    <div class="relative min-h-[250px]">
+                        <canvas id="chartKelas"></canvas>
+                    </div>
+                </div>
+
+                <!-- Chart 5: Guru Penasihat Breakdown -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-sm font-bold text-slate-700 flex items-center gap-2">
+                            <i class="fa-solid fa-user-tie text-teal-600"></i> Beban Permohonan Mengikut Guru
+                        </h3>
+                    </div>
+                    <div class="relative min-h-[250px]">
+                        <canvas id="chartGuru"></canvas>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Detailed Interactive Data Table -->
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+                <div class="p-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-700 flex items-center gap-2">
+                            <i class="fa-solid fa-table-list text-teal-600"></i> Jadual Data Terperinci
+                        </h3>
+                        <p class="text-xs text-slate-400 mt-0.5" id="tableRecordCount">Menampilkan 0 daripada 0 rekod</p>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-xs text-slate-500">Baris setiap halaman:</span>
+                        <select id="pageSizeSelect" onchange="changePageSize()" class="bg-slate-50 border border-slate-200 text-xs rounded px-2 py-1">
+                            <option value="10">10</option>
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto custom-scrollbar">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 text-slate-600 text-[11px] font-semibold uppercase tracking-wider border-b border-slate-200">
+                                <th class="p-3">#</th>
+                                <th class="p-3 cursor-pointer hover:bg-slate-100" onclick="sortTable('Timestamp')">Time Stamp <i class="fa-solid fa-sort text-slate-300"></i></th>
+                                <th class="p-3 cursor-pointer hover:bg-slate-100" onclick="sortTable('Nama Pelajar')">Nama Pelajar <i class="fa-solid fa-sort text-slate-300"></i></th>
+                                <th class="p-3 cursor-pointer hover:bg-slate-100" onclick="sortTable('Kelas')">Kelas <i class="fa-solid fa-sort text-slate-300"></i></th>
+                                <th class="p-3">No. Matrik</th>
+                                <th class="p-3 cursor-pointer hover:bg-slate-100" onclick="sortTable('Kategori Permohonan')">Kategori <i class="fa-solid fa-sort text-slate-300"></i></th>
+                                <th class="p-3">Tempoh</th>
+                                <th class="p-3">Guru Penasihat</th>
+                                <th class="p-3 text-center">Rekod Disiplin</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dataTableBody" class="text-xs divide-y divide-slate-100 text-slate-700">
+                            <tr>
+                                <td colspan="9" class="p-6 text-center text-slate-400">Sedang memuatkan data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Table Pagination -->
+                <div class="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+                    <div class="text-xs text-slate-500" id="paginationInfo">
+                        Halaman 1 dari 1
+                    </div>
+                    <div class="flex items-center space-x-1" id="paginationButtons">
+                        <button onclick="changePage(-1)" class="px-2.5 py-1 bg-white border border-slate-200 text-slate-600 rounded hover:bg-slate-50 disabled:opacity-50 text-xs">Sebelumnya</button>
+                        <button onclick="changePage(1)" class="px-2.5 py-1 bg-white border border-slate-200 text-slate-600 rounded hover:bg-slate-50 disabled:opacity-50 text-xs">Seterusnya</button>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Application JavaScript Code -->
+    <script>
+        const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRl6g9j2NAw-F8YLMFKy7eY9TuTa51cycHe5RE_KwShO2uq2RyJIZwASJC4oUruozCUCmTn09ZrajWN/pub?gid=193434735&single=true&output=csv";
+
+        // APP SECURITY PASSCODE (Boleh ditukar di sini)
+        const DASHBOARD_PASSCODE = "1234";
+
+        // Global State Variables
+        let rawData = [];
+        let filteredData = [];
+        let chartInstances = {};
+        
+        let currentPage = 1;
+        let pageSize = 25;
+        let sortColumn = '';
+        let sortAsc = true;
+
+        // Header Mapping Keys
+        const KEY_TIMESTAMP = "Time stamp";
+        const KEY_NAMA = "Nama Pelajar";
+        const KEY_KELAS = "Kelas";
+        const KEY_MATRIK = "No. Matrik";
+        const KEY_KATEGORI = "Kategori Permohonan";
+        const KEY_TEMPOH = "Tempoh Permohonan";
+        const KEY_GURU = "Nama Guru Penasihat";
+        const KEY_DISIPLIN = "Adakah anda pernah dikenakan tindakan disiplin atas kesalahan penyalahgunaan telefon pintar sebelum ini?";
+
+        window.onload = function() {
+            checkAuthSession();
+        };
+
+        // Passcode Authentication Logic
+        function checkAuthSession() {
+            const isAuth = sessionStorage.getItem('dashboard_authenticated');
+            if (isAuth === 'true') {
+                document.getElementById('authOverlay').classList.add('hidden');
+                loadCSVData();
+            } else {
+                document.getElementById('authOverlay').classList.remove('hidden');
+            }
+        }
+
+        function handleAuthSubmit(e) {
+            e.preventDefault();
+            const inputVal = document.getElementById('passcodeInput').value;
+            const errorMsg = document.getElementById('authErrorMsg');
+
+            if (inputVal === DASHBOARD_PASSCODE) {
+                sessionStorage.setItem('dashboard_authenticated', 'true');
+                document.getElementById('authOverlay').classList.add('hidden');
+                errorMsg.classList.add('hidden');
+                loadCSVData();
+            } else {
+                errorMsg.classList.remove('hidden');
+                document.getElementById('passcodeInput').value = '';
+                document.getElementById('passcodeInput').focus();
+            }
+        }
+
+        function logout() {
+            sessionStorage.removeItem('dashboard_authenticated');
+            document.getElementById('authOverlay').classList.remove('hidden');
+            document.getElementById('passcodeInput').value = '';
+            document.getElementById('authErrorMsg').classList.add('hidden');
+        }
+
+        // Fetch & Parse CSV Data
+        function loadCSVData() {
+            const refreshIcon = document.getElementById('refreshIcon');
+            refreshIcon.classList.add('fa-spin');
+            
+            document.getElementById('loadingStatus').classList.remove('hidden');
+            document.getElementById('loadingStatus').innerHTML = `
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-spinner fa-spin text-blue-600"></i>
+                    <span>Sedang memuatkan data secara langsung...</span>
+                </div>`;
+
+            Papa.parse(CSV_URL, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    refreshIcon.classList.remove('fa-spin');
+                    if(results.data && results.data.length > 0) {
+                        rawData = results.data.map((item, index) => ({ ...item, _id: index + 1 }));
+                        filteredData = [...rawData];
+                        
+                        document.getElementById('loadingStatus').classList.add('hidden');
+                        
+                        populateFilterDropdowns();
+                        applyFilters();
+                    } else {
+                        showError("Data didapati kosong atau tidak berformat CSV.");
+                    }
+                },
+                error: function(err) {
+                    refreshIcon.classList.remove('fa-spin');
+                    showError("Gagal memuatkan data CSV. Sila pastikan sambungan internet aktif.");
+                    console.error("CSV Fetch Error:", err);
+                }
+            });
+        }
+
+        function showError(msg) {
+            const status = document.getElementById('loadingStatus');
+            status.classList.remove('hidden', 'bg-blue-50', 'border-blue-200', 'text-blue-700');
+            status.classList.add('bg-rose-50', 'border-rose-200', 'text-rose-700');
+            status.innerHTML = `<i class="fa-solid fa-circle-exclamation mr-2"></i> ${msg}`;
+        }
+
+        // Populate Filter Options Dynamically
+        function populateFilterDropdowns() {
+            const getUniqueValues = (key) => {
+                const vals = rawData.map(d => d[key]).filter(v => v && v.trim() !== '');
+                return [...new Set(vals)].sort();
+            };
+
+            populateSelect('filterKategori', getUniqueValues(KEY_KATEGORI), 'Semua Kategori');
+            populateSelect('filterKelas', getUniqueValues(KEY_KELAS), 'Semua Kelas');
+            populateSelect('filterGuru', getUniqueValues(KEY_GURU), 'Semua Guru');
+        }
+
+        function populateSelect(elemId, options, defaultText) {
+            const select = document.getElementById(elemId);
+            select.innerHTML = `<option value="ALL">${defaultText}</option>`;
+            options.forEach(opt => {
+                const el = document.createElement('option');
+                el.value = opt;
+                el.textContent = opt;
+                select.appendChild(el);
+            });
+        }
+
+        // Apply All Active Filters
+        function applyFilters() {
+            const searchVal = document.getElementById('searchInput').value.toLowerCase().trim();
+            const kategoriVal = document.getElementById('filterKategori').value;
+            const kelasVal = document.getElementById('filterKelas').value;
+            const disiplinVal = document.getElementById('filterDisiplin').value;
+            const guruVal = document.getElementById('filterGuru').value;
+
+            filteredData = rawData.filter(row => {
+                // Search check
+                const matchSearch = !searchVal || 
+                    (row[KEY_NAMA] && row[KEY_NAMA].toLowerCase().includes(searchVal)) ||
+                    (row[KEY_MATRIK] && row[KEY_MATRIK].toLowerCase().includes(searchVal));
+
+                // Kategori check
+                const matchKategori = kategoriVal === 'ALL' || row[KEY_KATEGORI] === kategoriVal;
+
+                // Kelas check
+                const matchKelas = kelasVal === 'ALL' || row[KEY_KELAS] === kelasVal;
+
+                // Disiplin check
+                const matchDisiplin = disiplinVal === 'ALL' || 
+                    (row[KEY_DISIPLIN] && row[KEY_DISIPLIN].trim().toLowerCase().startsWith(disiplinVal.toLowerCase()));
+
+                // Guru check
+                const matchGuru = guruVal === 'ALL' || row[KEY_GURU] === guruVal;
+
+                return matchSearch && matchKategori && matchKelas && matchDisiplin && matchGuru;
+            });
+
+            currentPage = 1;
+            updateKPIs();
+            renderCharts();
+            renderTable();
+        }
+
+        function resetFilters() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('filterKategori').value = 'ALL';
+            document.getElementById('filterKelas').value = 'ALL';
+            document.getElementById('filterDisiplin').value = 'ALL';
+            document.getElementById('filterGuru').value = 'ALL';
+            applyFilters();
+        }
+
+        // Update Summary KPI Metrics
+        function updateKPIs() {
+            const total = filteredData.length;
+            document.getElementById('kpiTotal').innerText = total.toLocaleString();
+
+            const uniqueKelas = new Set(filteredData.map(d => d[KEY_KELAS]).filter(Boolean)).size;
+            document.getElementById('kpiKelas').innerText = uniqueKelas;
+
+            const disiplinCount = filteredData.filter(d => 
+                d[KEY_DISIPLIN] && d[KEY_DISIPLIN].trim().toLowerCase().startsWith('ya')
+            ).length;
+            document.getElementById('kpiDisiplin').innerText = disiplinCount;
+
+            const percentDisiplin = total > 0 ? ((disiplinCount / total) * 100).toFixed(1) : 0;
+            document.getElementById('kpiDisiplinPercent').innerText = `${percentDisiplin}%`;
+
+            const uniqueGuru = new Set(filteredData.map(d => d[KEY_GURU]).filter(Boolean)).size;
+            document.getElementById('kpiGuru').innerText = uniqueGuru;
+        }
+
+        // Render All Chart Visualizations
+        function renderCharts() {
+            // Palette Colors
+            const colors = {
+                teal: '#117E8E',
+                amber: '#F59E0B',
+                blue: '#3B82F6',
+                purple: '#8B5CF6',
+                rose: '#F43F5E',
+                emerald: '#10B981',
+                slate: '#64748B',
+                palette: ['#117E8E', '#F59E0B', '#3B82F6', '#8B5CF6', '#EC4899', '#10B981', '#6366F1', '#14B8A6']
+            };
+
+            // Helper to count occurrences
+            const countBy = (key) => {
+                const counts = {};
+                filteredData.forEach(d => {
+                    const val = (d[key] || 'Tidak Dinyatakan').trim();
+                    counts[val] = (counts[val] || 0) + 1;
+                });
+                return counts;
+            };
+
+            // 1. Chart Kategori (Doughnut)
+            const katData = countBy(KEY_KATEGORI);
+            createChart('chartKategori', 'doughnut', {
+                labels: Object.keys(katData),
+                datasets: [{
+                    data: Object.values(katData),
+                    backgroundColor: colors.palette,
+                    borderWidth: 2,
+                    borderColor: '#ffffff'
+                }]
+            }, {
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+                maintainAspectRatio: false
+            });
+
+            // 2. Chart Disiplin (Pie)
+            const disiplinCounts = { 'Tidak (Tiada Rekod)': 0, 'Ya (Ada Rekod)': 0 };
+            filteredData.forEach(d => {
+                if(d[KEY_DISIPLIN] && d[KEY_DISIPLIN].trim().toLowerCase().startsWith('ya')) {
+                    disiplinCounts['Ya (Ada Rekod)']++;
+                } else {
+                    disiplinCounts['Tidak (Tiada Rekod)']++;
+                }
+            });
+
+            createChart('chartDisiplin', 'pie', {
+                labels: Object.keys(disiplinCounts),
+                datasets: [{
+                    data: Object.values(disiplinCounts),
+                    backgroundColor: [colors.emerald, colors.amber],
+                    borderWidth: 2,
+                    borderColor: '#ffffff'
+                }]
+            }, {
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+                maintainAspectRatio: false
+            });
+
+            // 3. Chart Tempoh (Bar Horizontal)
+            const tempohData = countBy(KEY_TEMPOH);
+            createChart('chartTempoh', 'bar', {
+                labels: Object.keys(tempohData),
+                datasets: [{
+                    label: 'Bilangan',
+                    data: Object.values(tempohData),
+                    backgroundColor: colors.purple,
+                    borderRadius: 6
+                }]
+            }, {
+                indexAxis: 'y',
+                plugins: { legend: { display: false } },
+                scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
+                maintainAspectRatio: false
+            });
+
+            // 4. Chart Kelas (Bar)
+            const kelasData = countBy(KEY_KELAS);
+            createChart('chartKelas', 'bar', {
+                labels: Object.keys(kelasData),
+                datasets: [{
+                    label: 'Permohonan',
+                    data: Object.values(kelasData),
+                    backgroundColor: colors.teal,
+                    borderRadius: 6
+                }]
+            }, {
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+                maintainAspectRatio: false
+            });
+
+            // 5. Chart Guru (Bar Horizontal)
+            const guruData = countBy(KEY_GURU);
+            createChart('chartGuru', 'bar', {
+                labels: Object.keys(guruData),
+                datasets: [{
+                    label: 'Pelajar Diselia',
+                    data: Object.values(guruData),
+                    backgroundColor: colors.blue,
+                    borderRadius: 6
+                }]
+            }, {
+                indexAxis: 'y',
+                plugins: { legend: { display: false } },
+                scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
+                maintainAspectRatio: false
+            });
+        }
+
+        // Generic Chart Creator / Updater
+        function createChart(canvasId, type, data, options) {
+            if (chartInstances[canvasId]) {
+                chartInstances[canvasId].destroy();
+            }
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            chartInstances[canvasId] = new Chart(ctx, {
+                type: type,
+                data: data,
+                options: options
+            });
+        }
+
+        // Render Data Table with Pagination & Sorting
+        function renderTable() {
+            const tbody = document.getElementById('dataTableBody');
+            tbody.innerHTML = '';
+
+            // Sorting logic
+            let dataToDisplay = [...filteredData];
+            if (sortColumn) {
+                dataToDisplay.sort((a, b) => {
+                    let valA = a[sortColumn] || '';
+                    let valB = b[sortColumn] || '';
+                    return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                });
+            }
+
+            const total = dataToDisplay.length;
+            document.getElementById('tableRecordCount').innerText = `Menampilkan ${total} daripada ${rawData.length} rekod`;
+
+            if (total === 0) {
+                tbody.innerHTML = `<tr><td colspan="9" class="p-6 text-center text-slate-400">Tiada rekod dijumpai.</td></tr>`;
+                document.getElementById('paginationInfo').innerText = `Halaman 0 dari 0`;
+                return;
+            }
+
+            // Pagination logic
+            const totalPages = Math.ceil(total / pageSize);
+            if (currentPage > totalPages) currentPage = totalPages;
+            if (currentPage < 1) currentPage = 1;
+
+            const startIdx = (currentPage - 1) * pageSize;
+            const pageData = dataToDisplay.slice(startIdx, startIdx + pageSize);
+
+            pageData.forEach((row, idx) => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50 transition border-b border-slate-100";
+
+                const isDisiplinYa = row[KEY_DISIPLIN] && row[KEY_DISIPLIN].trim().toLowerCase().startsWith('ya');
+                const disiplinBadge = isDisiplinYa 
+                    ? `<span class="bg-amber-100 text-amber-700 font-semibold px-2 py-0.5 rounded-full text-[10px]">Ya</span>`
+                    : `<span class="bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full text-[10px]">Tidak</span>`;
+
+                tr.innerHTML = `
+                    <td class="p-3 text-slate-400 font-medium">${startIdx + idx + 1}</td>
+                    <td class="p-3 whitespace-nowrap text-slate-500">${row[KEY_TIMESTAMP] || '-'}</td>
+                    <td class="p-3 font-semibold text-slate-800">${row[KEY_NAMA] || '-'}</td>
+                    <td class="p-3"><span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[11px] font-medium">${row[KEY_KELAS] || '-'}</span></td>
+                    <td class="p-3 text-slate-500">${row[KEY_MATRIK] || '-'}</td>
+                    <td class="p-3"><span class="text-teal-700 bg-teal-50 px-2 py-0.5 rounded text-[11px] font-medium">${row[KEY_KATEGORI] || '-'}</span></td>
+                    <td class="p-3 text-slate-600">${row[KEY_TEMPOH] || '-'}</td>
+                    <td class="p-3 text-slate-600">${row[KEY_GURU] || '-'}</td>
+                    <td class="p-3 text-center">${disiplinBadge}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('paginationInfo').innerText = `Halaman ${currentPage} dari ${totalPages}`;
+        }
+
+        function changePage(delta) {
+            currentPage += delta;
+            renderTable();
+        }
+
+        function changePageSize() {
+            pageSize = parseInt(document.getElementById('pageSizeSelect').value);
+            currentPage = 1;
+            renderTable();
+        }
+
+        function sortTable(colName) {
+            if (sortColumn === colName) {
+                sortAsc = !sortAsc;
+            } else {
+                sortColumn = colName;
+                sortAsc = true;
+            }
+            renderTable();
+        }
+
+        // Export Filtered Data as CSV File
+        function exportData() {
+            if (!filteredData || filteredData.length === 0) {
+                alert("Tiada data untuk dieksport.");
+                return;
+            }
+
+            // Remove internal _id key before export
+            const exportable = filteredData.map(({ _id, ...rest }) => rest);
+            const csv = Papa.unparse(exportable);
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `Data_Permohonan_Pelajar_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
